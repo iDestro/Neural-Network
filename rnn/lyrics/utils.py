@@ -1,5 +1,6 @@
 import random
 import numpy as np
+import tensorflow as tf
 
 
 class Preprocess(object):
@@ -9,7 +10,7 @@ class Preprocess(object):
         self.corpus_indices = None
 
     def load_dataset(self, path):
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             corpus_chars = f.read()
 
         corpus_chars = corpus_chars.replace('\n', ' ').replace('\r', '')
@@ -37,3 +38,26 @@ class Preprocess(object):
             X = [_data(j * num_steps) for j in batch_indices]
             Y = [_data(j * num_steps + 1) for j in batch_indices]
             yield np.array(X, ctx), np.array(Y, ctx)
+
+
+def predict_rnn(prefix, num_chars, rnn, vocab_size, idx_to_char, char_to_idx):
+    output = [char_to_idx[prefix[0]]]
+    for t in range(num_chars + len(prefix) - 1):
+        # 将上一时间步的输出作为当前时间步的输入
+        X = tf.one_hot(output[-1], depth=vocab_size)
+        X = tf.reshape(X, [1, 1, -1])
+        o, _, _ = rnn(X)
+        if t < len(prefix) - 1:
+            output.append(char_to_idx[prefix[t + 1]])
+        else:
+            output.append(int(tf.argmax(o, axis=2)))
+    return ''.join([idx_to_char[i] for i in output])
+
+
+if __name__ == '__main__':
+    from model import LSTM
+    preprocess = Preprocess()
+    preprocess.load_dataset("./data/jaychou_lyrics.txt")
+    model = LSTM(len(preprocess.idx_to_char))
+    o = predict_rnn('分开', 20, model, len(preprocess.idx_to_char), preprocess.idx_to_char, preprocess.char_to_idx)
+    print(o)

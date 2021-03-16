@@ -10,7 +10,7 @@ class LSTM(keras.Model):
         # self.hidden_dim = hidden_dim
         # self.output_dim = output_dim
         # self.batch_size = batch_size
-        self.lstm = keras.layers.LSTM(units=units)
+        self.lstm = keras.layers.LSTM(units=units, return_sequences=True, return_state=True)
 
     # def get_params(self):
     #     def _one(shape):
