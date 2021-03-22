@@ -74,7 +74,6 @@ class ScaledDotProductAttention(Layer):
 
     def mask(self, inputs, masks):
         masks = K.cast(masks, 'float32')
-        # TODO: K.shape(inputs)[0]代表的是batch_size 还是啥？
         masks = K.tile(masks, [K.shape(inputs)[0] // K.shape(masks)[0], 1])
         masks = K.expand_dims(masks, 1)
         outputs = inputs + masks * self.masking_num
@@ -105,6 +104,9 @@ class ScaledDotProductAttention(Layer):
         if K.dtype(values) != 'float32':
             values = K.cast(values, 'float32')
 
+        # (batch_size*n_heads, max_len, head_dim)
+        # (batch_size*n_heads, head_dim, max_len)
+        # (batch_size*n_heads, max_len, max_len)
         matmul = K.batch_dot(queries, tf.transpose(keys, [0, 2, 1]))  # MatMul
         scaled_matmul = matmul / int(queries.shape[-1]) ** 0.5  # Scale
 
@@ -137,7 +139,7 @@ class MultiHeadAttention(Layer):
         self.future = future
         self.trainable = trainable
 
-    # TODO: q, k, v 的大小之间有什么关系？
+    # TODO: q, k, v 的大小之间有什么关系?
     def build(self, input_shape):
         self.weights_queries = self.add_weight(
             shape=[input_shape[0][-1], self.n_heads * self.head_dim],
@@ -167,11 +169,15 @@ class MultiHeadAttention(Layer):
             assert len(inputs) == 3, 'inputs should be set [queries, keys, values].'
             queries, keys, values = inputs
 
+        # (batch_size, max_len, model_dim) * (model_dim, n_heads, head_dim)
+        # = (batch_size, max_len, n_heads, head_dim)
         queries_linear = K.dot(queries, self.weights_queries)
         keys_linear = K.dot(keys, self.weights_keys)
         values_linear = K.dot(values, self.weights_values)
 
         # TODO: axis=2指的是？
+        # 分割后的单个矩阵的shape为：(batch_size, max_len, 1,  head_dim)， 一共有n_heads个
+        # (batch_size*n_heads, max_len, 1, head_dim)
         queries_multi_heads = tf.concat(tf.split(queries_linear, self.n_heads, axis=2), axis=0)
         keys_multi_heads = tf.concat(tf.split(keys_linear, self.n_heads, axis=2), axis=0)
         values_multi_heads = tf.concat(tf.split(values_linear, self.n_heads, axis=2), axis=0)
@@ -223,8 +229,11 @@ if __name__ == '__main__':
     print('Model building ... ')
     inputs = Input(shape=(max_len,), name="inputs")
     masks = Input(shape=(max_len,), name='masks')
+    # 随机初始化词向量
     embeddings = Embedding(vocab_size, model_dim)(inputs)
+    # 采用PositionEncoding对词向量进行编码
     encodings = PositionEncoding(model_dim)(embeddings)
+    # 直接将embeddings与encodings相加, 得到编码
     encodings = Add()([embeddings, encodings])
     x = MultiHeadAttention(8, 64)([encodings, encodings, encodings, masks])
     x = GlobalAveragePooling1D()(x)
